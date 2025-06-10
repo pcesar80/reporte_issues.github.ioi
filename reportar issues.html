@@ -1,0 +1,141 @@
+<!-- Inserta este código dentro del <script> reemplazando el código anterior de generación de PDF -->
+
+    <script>
+        // Función para convertir archivo a base64
+        function getBase64(file) {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = error => reject(error);
+          });
+        }
+      
+        // Agregar más pasos dinámicamente (igual que antes)
+        const addStepBtn = document.getElementById('addStepBtn');
+        const stepsContainer = document.getElementById('stepsContainer');
+        let stepCount = 4;
+      
+        addStepBtn.addEventListener('click', () => {
+          stepCount++;
+          const stepDiv = document.createElement('div');
+          stepDiv.className = 'step-item';
+          stepDiv.innerHTML = `
+            <label for="step${stepCount}">${stepCount}.</label>
+            <input type="text" id="step${stepCount}" name="steps[]" placeholder="Describir paso ${stepCount}" />
+            `;
+
+          stepsContainer.appendChild(stepDiv);
+        });
+      
+        // Validar campos obligatorios
+        function validateForm() {
+          const form = document.getElementById('reportForm');
+          if (!form.issueTitle.value.trim()) {
+            alert('Por favor, ingresa un título referencial para el issue.');
+            return false;
+          }
+          if (!form.datetimeTest.value) {
+            alert('Por favor, ingresa la fecha y hora de prueba.');
+            return false;
+          }
+          return true;
+        }
+      
+        document.getElementById('generatePdfBtn').addEventListener('click', async () => {
+          if (!validateForm()) return;
+      
+          const { jsPDF } = window.jspdf;
+          const doc = new jsPDF();
+      
+          const form = document.getElementById('reportForm');
+          const formData = new FormData(form);
+      
+          let y = 10;
+          const lineHeight = 8;
+          const pageHeight = doc.internal.pageSize.height;
+          const margin = 10;
+          const maxWidth = doc.internal.pageSize.width - margin * 2;
+      
+          function addText(text, options = {}) {
+            if (y > pageHeight - 20) {
+              doc.addPage();
+              y = 10;
+            }
+            doc.text(text, margin, y, options);
+            y += lineHeight;
+          }
+      
+          // Títulos grandes
+          doc.setFontSize(16);
+          doc.setTextColor(0, 102, 204);
+          addText('Formulario de Reporte de Incidentes – CMA');
+          y += 5;
+          doc.setFontSize(12);
+          doc.setTextColor(0, 0, 0);
+      
+          addText('Título referencial: ' + formData.get('issueTitle'));
+          y += 4;
+      
+          addText('Información general', { align: 'left' });
+          addText('Fecha y hora de prueba: ' + formData.get('datetimeTest'));
+          addText('Nombre y contacto del usuario: ' + formData.get('userContact'));
+      
+          const platforms = formData.getAll('platforms');
+          addText('Plataformas afectadas: ' + (platforms.length ? platforms.join(', ') : 'Ninguna'));
+      
+          y += 4;
+          addText('Detalles del issue detectado');
+          addText('Ambiente y entorno');
+          addText('Ambiente donde ocurrió el error: ' + formData.get('environment'));
+          addText('Versión de la App/Web: ' + formData.get('appVersion'));
+      
+          y += 4;
+          addText('Base de datos');
+          addText('Por favor revisar adjuntos para evidencias.');
+      
+          // Función para agregar imágenes a PDF (escalar manteniendo proporción)
+          async function addImages(files, sectionTitle) {
+            if (files.length === 0) return;
+            y += 4;
+            addText(sectionTitle);
+            for (const file of files) {
+              const base64 = await getBase64(file);
+              const imgProps = doc.getImageProperties(base64);
+              const pdfWidth = maxWidth;
+              const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      
+              if (y + pdfHeight > pageHeight - 20) {
+                doc.addPage();
+                y = 10;
+              }
+              doc.addImage(base64, 'JPEG', margin, y, pdfWidth, pdfHeight);
+              y += pdfHeight + 5;
+            }
+          }
+      
+          // Adjuntos base de datos
+          const dbFiles = form.dbAttachments.files;
+          await addImages(dbFiles, 'Adjuntos Base de Datos');
+      
+          y += 4;
+          addText('Pasos para reproducir el problema:');
+          const steps = formData.getAll('steps[]').filter(s => s.trim() !== '');
+          steps.forEach((step, i) => {
+            addText((i + 1) + '. ' + step);
+          });
+      
+          y += 4;
+          addText('Información técnica adicional');
+          addText('Logs disponibles: ' + formData.get('logsAvailable'));
+          addText('Intento de reproducir con otra cuenta/dispositivo: ' + formData.get('reproduceAttempt'));
+          addText('Patrón detectado: ' + formData.get('patternDetected'));
+      
+          // Más adjuntos
+          const moreFiles = form.moreAttachments.files;
+          await addImages(moreFiles, 'Más Adjuntos');
+      
+          doc.save('Reporte_Incidentes_CMA.pdf');
+        });
+      </script>
+      
