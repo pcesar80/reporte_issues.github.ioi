@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Reporte de Incidentes – RRHH - OTOBO</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; }
+  h1 { margin-bottom: 20px; }
+  h2 { background: #0073e6; color: white; padding: 8px; border-radius: 5px; margin-top: 20px; }
+  label { display: block; margin: 8px 0 4px; font-weight: bold; }
+  input[type="text"], input[type="date"], textarea, select {
+    width: 100%; padding: 6px; box-sizing: border-box;
+    margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px;
+  }
+  textarea { resize: vertical; }
+  .step-item { display: flex; align-items: center; margin-bottom: 10px; }
+  .step-item label { margin-right: 10px; font-weight: bold; width: 20px; }
+  .step-item input { flex: 1; padding: 8px; }
+  button {
+    background-color: #0073e6; color: white; border: none;
+    padding: 10px 16px; font-size: 1rem; border-radius: 4px; cursor: pointer;
+  }
+  button:hover { background-color: #005bb5; }
+</style>
+</head>
+<body>
+
+<h1>Pedido de Configuración / issues – RRHH - OTOBO</h1>
+
+<form id="reportForm">
+
+  <label for="issueTitle">Título referencial al pedido</label>
+  <input type="text" id="issueTitle" name="issueTitle" placeholder="Ej: Error en pantalla principal o configurar rol.." required />
+
+  <h2>Información general</h2>
+  <label for="userContact">Nombre y contacto del usuario solicitante</label>
+  <input type="text" id="userContact" name="userContact" placeholder="Nombre y email o teléfono" />
+
+  <h2>Tipo de Pedido</h2>
+  <label for="issueType">Solicitud:</label>
+  <select id="issueType" name="issueType">
+    <option value="">-- Seleccionar --</option>
+    <option value="Solicitud de Configuración">Configuración</option>
+    <option value="Issue en Formulario">Issue en Formulario</option>
+  </select>
+
+  <div id="affectedFormsContainer" style="margin-top:8px; display:none;">
+    <label for="affectedForms">Formulario(s) afectado(s):</label>
+    <input type="text" id="affectedForms" name="affectedForms" placeholder="Indicar el/los formularios afectados" />
+  </div>
+
+  <h2>Detalle</h2>
+  <label for="testDate">Fecha de Pedido <span style="color:red;">*</span></label>
+  <input type="date" id="testDate" name="testDate" required />
+  <label for="issueDescription">Descripción de la Solicitud</label>
+  <input type="text" id="issueDescription" name="issueDescription" placeholder="Describa el detalle de la solicitud" />
+
+  <h2>Pasos para reproducir el Pedido</h2>
+  <p>Por favor detallar los pasos hasta llegar al punto del Pedido:</p>
+  <div id="stepsContainer" class="steps">
+    <div class="step-item">
+      <label for="step1">1.</label>
+      <input type="text" id="step1" name="steps[]" placeholder="Describir paso 1" />
+    </div>
+    <div class="step-item">
+      <label for="step2">2.</label>
+      <input type="text" id="step2" name="steps[]" placeholder="Describir paso 2" />
+    </div>
+    <div class="step-item">
+      <label for="step3">3.</label>
+      <input type="text" id="step3" name="steps[]" placeholder="Describir paso 3" />
+    </div>
+    <div class="step-item">
+      <label for="step4">4.</label>
+      <input type="text" id="step4" name="steps[]" placeholder="Describir paso 4" />
+    </div>
+  </div>
+  <button type="button" id="addStepBtn">+ Agregar paso</button>
+
+  <h2>Adjuntos</h2>
+  <label for="moreAttachments">Adjuntar archivos (imágenes, prints):</label>
+  <input type="file" id="moreAttachments" name="moreAttachments" accept="image/*" multiple />
+
+  <!-- Botón centrado -->
+  <div style="text-align: center; margin-top: 12px;">
+    <button type="button" id="generatePdfBtn">Generar PDF</button>
+  </div>
+</form>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+const addStepBtn = document.getElementById('addStepBtn');
+const stepsContainer = document.getElementById('stepsContainer');
+let stepCount = 4;
+
+addStepBtn.addEventListener('click', () => {
+  stepCount++;
+  const stepDiv = document.createElement('div');
+  stepDiv.className = 'step-item';
+  stepDiv.innerHTML = `
+    <label for="step${stepCount}">${stepCount}.</label>
+    <input type="text" id="step${stepCount}" name="steps[]" placeholder="Describir paso ${stepCount}" />
+  `;
+  stepsContainer.appendChild(stepDiv);
+});
+
+const issueTypeSelect = document.getElementById('issueType');
+const affectedFormsContainer = document.getElementById('affectedFormsContainer');
+
+issueTypeSelect.addEventListener('change', () => {
+  affectedFormsContainer.style.display = issueTypeSelect.value === 'Issue en Formulario' ? 'block' : 'none';
+});
+
+// 📅 Forzar apertura del calendario al hacer clic en "Fecha de Pedido"
+const testDateInput = document.getElementById('testDate');
+testDateInput.addEventListener('click', () => {
+  testDateInput.showPicker?.();
+});
+
+// -------------------------
+// Encabezado (NUEVO)
+// -------------------------
+async function addHeader(doc) {
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  // Logo CMA desde GitHub
+  const logoUrl = "https://raw.githubusercontent.com/pcesar80/reporte_rrhh_otobo/main/logo_CMA.png";
+  const response = await fetch(logoUrl);
+  const blob = await response.blob();
+  const logoBase64 = await new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.readAsDataURL(blob);
+  });
+
+  // Agregar logo
+  doc.addImage(logoBase64, "PNG", 10, 5, 30, 12);
+
+  // Texto institucional
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(7);
+  doc.text("2025 - AÑO DE LA RECONSTRUCCIÓN DE LA NACIÓN ARGENTINA", pageWidth - 10, 15, { align: "right" });
+
+  // Línea separadora
+  doc.setLineWidth(0.5);
+  doc.line(10, 18, pageWidth - 10, 18);
+
+  // Título principal
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text("Reporte de Incidentes – RRHH - OTOBO", 10, 25);
+
+  // Fecha a la derecha
+  const today = new Date();
+  const fechaStr = today.toISOString().split("T")[0];
+  doc.text("Fecha: " + fechaStr, pageWidth - 10, 25, { align: "right" });
+
+  return 35; // posición inicial Y para el contenido
+}
+
+// -------------------------
+// PDF generation (modificado SOLO para usar addHeader)
+// -------------------------
+document.getElementById('generatePdfBtn').addEventListener('click', async () => {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+
+  const form = document.getElementById('reportForm');
+  const formData = new FormData(form);
+
+  let y = await addHeader(doc); // usar encabezado
+  const lineHeight = 8;
+  const pageHeight = doc.internal.pageSize.height;
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  function addField(label, value, maxWidth = 130, extraSpacing = 0) {
+    if (!value || value.trim() === "") return;
+    if (y > pageHeight - 30) { doc.addPage(); y = addHeader(doc); }
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text(label + ": ", 15, y);
+
+    doc.setFont("helvetica", "normal");
+    const spaceAfterColon = extraSpacing ? 4 : 2;
+    const xOffset = 15 + doc.getTextWidth(label + ": ") + spaceAfterColon;
+
+    const lines = doc.splitTextToSize(value, maxWidth);
+    doc.text(lines, xOffset, y);
+    y += lines.length * lineHeight;
+  }
+
+  function addSection(title) {
+    if (y > pageHeight - 20) { doc.addPage(); y = addHeader(doc); }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text(title, 10, y);
+    const textWidth = doc.getTextWidth(title);
+    doc.setLineWidth(0.5);
+    doc.line(10, y + 1.5, 10 + textWidth, y + 1.5);
+    y += lineHeight;
+  }
+
+  addSection("Información general");
+  addField("Título referencial", formData.get("issueTitle"));
+  addField("Usuario que lo detectó", formData.get("userContact"), 130, 1);
+
+  addSection("Tipo de Pedido");
+  const issueType = formData.get("issueType");
+  addField("Tipo de reporte", issueType || "");
+  if (issueType === "Issue en Formulario") {
+    addField("Formulario(s) afectado(s)", formData.get("affectedForms"), 130, 1);
+  }
+
+  addSection("Detalles del issue detectado");
+  const today = new Date();
+  const fechaStr = today.toISOString().split("T")[0];
+  addField("Fecha de prueba", formData.get("testDate") || fechaStr);
+  addField("Descripción del issue", formData.get("issueDescription"), 130, 1);
+
+  addSection("Pasos para reproducir el problema");
+  const steps = formData.getAll("steps[]");
+  steps.forEach((step, i) => {
+    if (step.trim() !== "") {
+      if (y > pageHeight - 30) { doc.addPage(); y = addHeader(doc); }
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(11);
+      const stepLines = doc.splitTextToSize(`${i + 1}. ${step}`, 180);
+      doc.text(stepLines, 15, y);
+      y += stepLines.length * lineHeight;
+    }
+  });
+
+  // Adjuntos (igual que tenías)
+  const files = formData.getAll("moreAttachments");
+  if (files.length) {
+    addSection("Adjuntos");
+    let yImageIndex = 0;
+    const thumbWidth = 60;
+    const thumbHeight = 45;
+    const margin = 5;
+    const imagesPerRow = 3;
+
+    const promises = files.map(file => new Promise(resolve => {
+      if (file && file.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          const imgData = e.target.result;
+          const col = yImageIndex % imagesPerRow;
+          const row = Math.floor(yImageIndex / imagesPerRow);
+          let yPos = y + row * (thumbHeight + margin);
+          const xPos = 15 + col * (thumbWidth + margin);
+
+          if (yPos + thumbHeight > pageHeight - 20) {
+            doc.addPage();
+            y = addHeader(doc);
+            yPos = y;
+            yImageIndex = 0;
+          }
+
+          doc.addImage(imgData, "JPEG", xPos, yPos, thumbWidth, thumbHeight);
+          yImageIndex++;
+          resolve();
+        };
+        reader.readAsDataURL(file);
+      } else resolve();
+    }));
+
+    Promise.all(promises).then(() => {
+      const now = new Date();
+      const pad = n => n.toString().padStart(2, '0');
+      const fileName = `Form_rrhh_${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_` +
+                       `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.pdf`;
+      doc.save(fileName);
+    });
+    return;
+  }
+
+  const now = new Date();
+  const pad = n => n.toString().padStart(2, '0');
+  const fileName = `Form_rrhh_${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_` +
+                   `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.pdf`;
+  doc.save(fileName);
+});
+</script>
+</body>
+</html>
